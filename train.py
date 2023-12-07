@@ -1,103 +1,122 @@
 import pandas as pd
 import numpy as np
-import csv
-import os
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from sklearn.cluster import KMeans
 from mpl_toolkits.mplot3d import Axes3D
+from sklearn.metrics import silhouette_score
+from sklearn.decomposition import PCA
 
 training_data_raw = pd.read_csv("./Train.csv")
 
-training_data_raw.drop('ID', axis=1, inplace=True)
+training_data_raw.drop(['ID', 'Profession', 'Var_1', 'Segmentation'], axis=1, inplace=True)
 
-X = pd.get_dummies(training_data_raw, columns=['Var_1', 'Spending_Score', 'Profession', 'Gender', 'Graduated', 'Ever_Married', 'Segmentation'])
+X = pd.DataFrame(training_data_raw)
 
-imputer = SimpleImputer(strategy='most_frequent')
-columns = X.columns
-X[columns] = imputer.fit_transform(X[columns])
 
-X = X.astype(float)
+spending_score_map = {'Low': 0, 'Medium': 1, 'High': 2}
+X['Spending_Score'] = X['Spending_Score'].fillna('Unknown').map(spending_score_map)
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+# Handle missing values and map Gender
+gender_map = {'Male': 0, 'Female': 1}  # Assuming 'Other' as an additional category
+X['Gender'] = X['Gender'].fillna('Unknown').map(gender_map)
+
+# Handle missing values and map Ever_Married and Graduated
+married_map = {'Yes': 1, 'No': 0}
+graduated_map = {'Yes': 1, 'No': 0}
+X['Ever_Married'] = X['Ever_Married'].fillna('Unknown').map(married_map)
+X['Graduated'] = X['Graduated'].fillna('Unknown').map(graduated_map)
+
+X.dropna(inplace=True)
+
+print(X)
+
+X[X.columns] = StandardScaler().fit_transform(X)
 
 pca_3d = PCA(n_components=3)
-X_3d = pca_3d.fit_transform(X_scaled)
 
+pca_3d_result = pca_3d.fit_transform(X)
+
+print('Explained variation per principal component: {}'.format(pca_3d.explained_variance_ratio_))
+
+# >> Explained variation per principal component: [0.36198848 0.1920749 ]
+
+print('Cumulative variance explained by 2 principal components: {:.2%}'.format(np.sum(pca_3d.explained_variance_ratio_)))
 
 dataset_pca = pd.DataFrame(abs(pca_3d.components_), columns=X.columns, index=['PC_1', 'PC_2', 'PC_3'])
 print('\n\n', dataset_pca)
 
-random_indices = np.random.choice(X_3d.shape[0], 200, replace=False)
-X_3d_sample = X_3d[random_indices, :]
+print("\n*************** Most important features *************************")
+print('As per PC 1:\n', (dataset_pca[dataset_pca > 0.4].iloc[0]).dropna())   
+print('\n\nAs per PC 2:\n', (dataset_pca[dataset_pca > 0.4].iloc[1]).dropna())
+print('\n\nAs per PC 2:\n', (dataset_pca[dataset_pca > 0.4].iloc[2]).dropna())
+print("\n******************************************************************")
 
-fig = plt.figure(figsize=(8, 6))
-ax = fig.add_subplot(111, projection='3d')
+# Your previous code for PCA and data preprocessing
 
-# Scatter plot of the 3D PCA results with randomly selected points
-ax.scatter(X_3d_sample[:, 0], X_3d_sample[:, 1], X_3d_sample[:, 2], s=60)
-
-ax.set_xlim(X_3d_sample[:, 0].min() - 1, X_3d_sample[:, 0].max() + 1)
-ax.set_ylim(X_3d_sample[:, 1].min() - 1, X_3d_sample[:, 1].max() + 1)
-ax.set_zlim(X_3d_sample[:, 2].min() - 1, X_3d_sample[:, 2].max() + 1)
-
-ax.set_xlabel('PC1')
-ax.set_ylabel('PC2')
-ax.set_zlabel('PC3')
-
-# Setting title
-ax.set_title('3D PCA Results (Sampled)')
-
-# Show plot
-plt.show()
-
-
-
-inertias = []
-for i in range(1, 11):
-    kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42)
-    kmeans.fit(X_3d)
-    inertias.append(kmeans.inertia_)
-
-plt.plot(range(1, 11), inertias, marker='o')
-plt.title('Elbow Method for Optimal K')
-plt.xlabel('Number of Clusters (K)')
-plt.ylabel('Inertia')
-plt.show()
-
-# Update the optimal_num_clusters based on the elbow method result
-optimal_num_clusters = 8
-kmeans = KMeans(n_clusters=optimal_num_clusters, init='k-means++', random_state=42)
-kmeans.fit(X_scaled)
-
-# Predict cluster labels
-# After fitting KMeans with the desired number of clusters
-labels = kmeans.predict(X_scaled)
-
-# Create a new figure for 3D plot
+# Plotting a random sample after PCA transformation
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
-# Plot points with their respective clusters
-scatter = ax.scatter(X_3d_sample[:, 0], X_3d_sample[:, 1], X_3d_sample[:, 2], c=labels[random_indices], cmap='viridis', s=60, alpha=0.6)
+# Randomly select a subset of indices for visualization
+random_indices = np.random.choice(X.shape[0], 500, replace=False)
 
-# Set axis limits to accommodate the range of sampled data points
-ax.set_xlim(X_3d_sample[:, 0].min() - 1, X_3d_sample[:, 0].max() + 1)
-ax.set_ylim(X_3d_sample[:, 1].min() - 1, X_3d_sample[:, 1].max() + 1)
-ax.set_zlim(X_3d_sample[:, 2].min() - 1, X_3d_sample[:, 2].max() + 1)
+# Sample the PCA transformed data
+pca_sample = pca_3d_result[random_indices, :]
 
+# Plotting the 3D scatter plot
+ax.scatter(pca_sample[:, 0], pca_sample[:, 1], pca_sample[:, 2], s=60)
+
+# Set labels for each axis
 ax.set_xlabel('PC1')
 ax.set_ylabel('PC2')
 ax.set_zlabel('PC3')
 
 # Setting title
-ax.set_title(f'KMeans Clustering with {optimal_num_clusters} clusters')
-
-# Show color bar legend for clusters
-plt.colorbar(scatter, ax=ax, label='Clusters')
+ax.set_title('3D Scatter Plot after PCA')
 
 # Show plot
 plt.show()
+
+silhouette_scores = []
+for k in range(2, 11):  # K varies from 2 to 10
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    cluster_labels = kmeans.fit_predict(pca_3d_result)  # Using PCA transformed data
+    silhouette_avg = silhouette_score(pca_3d_result, cluster_labels)
+    silhouette_scores.append(silhouette_avg)
+
+# Plotting silhouette scores
+plt.plot(range(2, 11), silhouette_scores, marker='o')
+plt.title('Silhouette Score for Optimal K')
+plt.xlabel('Number of Clusters (K)')
+plt.ylabel('Silhouette Score')
+plt.show()
+
+# Assuming optimal_num_clusters is determined using silhouette analysis or any other method
+optimal_num_clusters = 4  # Replace this with the actual optimal number of clusters
+
+# Initialize KMeans with the optimal number of clusters
+kmeans = KMeans(n_clusters=optimal_num_clusters, random_state=42)
+cluster_labels = kmeans.fit_predict(pca_3d_result)  # Fit KMeans on the PCA transformed data
+
+# Plotting the clusters in 3D space
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+
+# Plotting the clusters using the PCA transformed data
+ax.scatter(pca_3d_result[:, 0], pca_3d_result[:, 1], pca_3d_result[:, 2],
+           c=cluster_labels, cmap='viridis', s=60, alpha=0.6)
+
+# Set axis labels
+ax.set_xlabel('PC1')
+ax.set_ylabel('PC2')
+ax.set_zlabel('PC3')
+
+# Set title for the plot
+ax.set_title(f'KMeans Clustering with {optimal_num_clusters} clusters')
+
+# Show the plot
+plt.show()
+
+
